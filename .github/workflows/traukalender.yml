@@ -1,8 +1,8 @@
 name: Traukalender-Monitor
 
 on:
-  schedule:
-    - cron: "7,22,37,52 * * * *"   # alle 15 Min, versetzt von den ueberlasteten :00/:15/:30/:45
+  # Takt kommt extern von cron-job.org (alle 15 Min per workflow_dispatch).
+  # GitHubs eigener schedule-Trigger ist entfernt (war unzuverlässig).
   workflow_dispatch: {}
 
 permissions:
