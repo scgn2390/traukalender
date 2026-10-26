@@ -17,6 +17,11 @@ Ausgabe:
       # ERSTLAUF=<0|1>
 """
 import subprocess, json, datetime, re, html, os
+try:
+    from zoneinfo import ZoneInfo
+    TZ = ZoneInfo("Europe/Berlin")
+except Exception:
+    TZ = None  # Fallback: lokale/UTC-Zeit des Runners
 
 TRAUORTE = {"Standesamt": 1533, "Standesamt 2": 2906, "Schloss Eller": 1782}
 WIN_START = datetime.date(2027, 4, 15)
@@ -255,7 +260,7 @@ def main():
     prev = load_prev()
     first_run = prev is None
     prev = prev or {}
-    now = datetime.datetime.now().strftime("%d.%m.%Y, %H:%M")
+    now = datetime.datetime.now(TZ).strftime("%d.%m.%Y, %H:%M")
     current, errors = {}, []
     for loc, tid in TRAUORTE.items():
         try:
@@ -316,18 +321,27 @@ def main():
     print(f"# FEHLER={','.join(errors)}")
     print(f"# ERSTLAUF={1 if first_run else 0}")
 
-    # Kurz-Status für den Workflow (Push-Entscheidung + knapper Text)
+    # Kurz-Status für den Workflow — es wird IMMER gepusht (auch "keine Änderung").
     errors_all = len(errors) == len(TRAUORTE)
+    total_free = sum(len(v) for loc in current for v in current[loc].values())
+    hhmm = now.split(", ")[-1]
     if total_new:
         wort = "neuer Slot" if total_new == 1 else "neue Slots"
-        headline = f"{total_new} {wort} im Traukalender (Fr/Sa 15.–30.04.2027)"
+        headline = f"\U0001F514 {total_new} {wort} im Traukalender (Fr/Sa 15.–30.04.2027)"
+        priority, tags = "high", "bell,tada"
     elif errors_all:
-        headline = "Abruf aktuell nicht möglich (alle Trauorte)"
+        headline = f"⚠ Abruf aktuell nicht möglich ({hhmm})"
+        priority, tags = "default", "warning"
+    elif first_run:
+        headline = f"Überwachung gestartet — {total_free} freie Slots erfasst ({hhmm})"
+        priority, tags = "low", "calendar"
     else:
-        headline = ""
+        headline = f"Keine Änderung — {total_free} freie Slots (Stand {hhmm})"
+        priority, tags = "low", "calendar"
     with open(STATUS_FILE, "w", encoding="utf-8") as f:
         json.dump({"new": total_new, "errors": errors, "errors_all": errors_all,
-                   "first_run": first_run, "headline": headline, "stand": now},
+                   "first_run": first_run, "headline": headline,
+                   "priority": priority, "tags": tags, "stand": now},
                   f, ensure_ascii=False)
 
 

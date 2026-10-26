@@ -2,7 +2,7 @@ name: Traukalender-Monitor
 
 on:
   schedule:
-    - cron: "1 * * * *"       # stündlich :01 (UTC; Minute in jeder Zeitzone gleich)
+    - cron: "0,15,30,45 * * * *"   # alle 15 Min (:00/:15/:30/:45; Minute in jeder Zeitzone gleich)
   workflow_dispatch: {}
 
 permissions:
@@ -49,21 +49,23 @@ jobs:
       - id: deploy
         uses: actions/deploy-pages@v4
 
-      - name: Push nur bei neuen Slots oder Totalausfall
+      - name: Push senden (jeder Lauf)
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           PAGE_URL: ${{ steps.deploy.outputs.page_url }}
         run: |
           HEADLINE=$(python3 -c "import json;print(json.load(open('status.json')).get('headline',''))")
-          if [ -n "$HEADLINE" ] && [ -n "$NTFY_TOPIC" ]; then
+          PRIO=$(python3 -c "import json;print(json.load(open('status.json')).get('priority','default'))")
+          TAGS=$(python3 -c "import json;print(json.load(open('status.json')).get('tags','calendar'))")
+          if [ -n "$NTFY_TOPIC" ]; then
             curl -s -m 20 \
               -H "Title: Traukalender" \
-              -H "Priority: high" \
-              -H "Tags: bell" \
+              -H "Priority: ${PRIO}" \
+              -H "Tags: ${TAGS}" \
               -H "Click: ${PAGE_URL}" \
               --data-binary "${HEADLINE} -> Uebersicht: ${PAGE_URL}" \
               "https://ntfy.sh/${NTFY_TOPIC}"
-            echo "Push gesendet."
+            echo "Push gesendet (Prio ${PRIO})."
           else
-            echo "Kein Push noetig (keine neuen Slots)."
+            echo "NTFY_TOPIC fehlt - kein Push."
           fi
