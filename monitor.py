@@ -23,7 +23,16 @@ try:
 except Exception:
     TZ = None  # Fallback: lokale/UTC-Zeit des Runners
 
-TRAUORTE = {"Standesamt": 1533, "Standesamt 2": 2906, "Schloss Eller": 1782}
+PRIMARY = {"Standesamt": 1533, "Standesamt 2": 2906, "Schloss Eller": 1782}
+SECONDARY = {
+    "Rathaus Benrath": 1576,
+    "Rathaus Eller": 1621,
+    "Schloss Benrath": 1742,
+    "Rathaus Ältestenratssaal": 1862,
+    "„Ja in Kürze“ im Standesamt": 39984,
+    "TEEKANNE-Belvedere im Kunstpalast": 45283,
+}
+TRAUORTE = {**PRIMARY, **SECONDARY}
 WIN_START = datetime.date(2027, 4, 15)
 WIN_END   = datetime.date(2027, 4, 30)
 WEEKDAYS  = {4, 5}
@@ -128,6 +137,18 @@ CSS = """
   .dot{width:7px;height:7px;border-radius:50%;background:var(--new);}
   .change-note{display:flex;align-items:center;gap:9px;margin:18px 0 4px;font-size:.92rem;font-weight:600;color:var(--new);background:var(--new-soft);border:1px solid var(--new-line);border-radius:12px;padding:11px 15px;}
   .change-note.flat{color:var(--muted);background:var(--surface);border-color:var(--line);font-weight:500;}
+  .tabs{margin-top:16px;}
+  .tabin{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;}
+  .tablbl{display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-family:var(--font-display);font-size:1.05rem;font-weight:600;color:var(--muted);padding:6px 2px 10px;margin-right:24px;border-bottom:2px solid transparent;transition:color .15s;}
+  .tablbl:hover{color:var(--ink);}
+  .tabnew{font-family:var(--font-body);font-size:.66rem;font-weight:800;letter-spacing:.04em;background:var(--new);color:#fff;border-radius:999px;padding:1px 7px;}
+  :root[data-theme="dark"] .tabnew,:root:not([data-theme="light"]) .tabnew{color:#16231b;}
+  .tabline{border-bottom:1px solid var(--line);margin-top:-1px;}
+  .panel{display:none;}
+  #tab-1:checked ~ .panel-1{display:block;}
+  #tab-2:checked ~ .panel-2{display:block;}
+  #tab-1:checked ~ .tablbl[for="tab-1"],#tab-2:checked ~ .tablbl[for="tab-2"]{color:var(--ink);border-bottom-color:var(--accent);}
+  .panel section.loc:first-child{margin-top:22px;}
   section.loc{margin-top:30px;}
   .loc-head{display:flex;align-items:baseline;gap:10px;margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid var(--line);}
   .loc-head h2{font-family:var(--font-display);font-size:1.3rem;font-weight:600;margin:0;}
@@ -188,26 +209,24 @@ def render(current, prev, first_run, errors, now):
     else:
         parts.append('<div class="change-note flat">Keine Änderung seit letztem Lauf.</div>')
 
-    for loc in TRAUORTE:
+    def section_html(loc):
         cur = current.get(loc, {})
         oldloc = prev.get(loc, {})
         n_slots = sum(len(v) for v in cur.values())
         n_days = len(cur)
-        parts.append('<section class="loc">')
-        parts.append('<div class="loc-head">')
-        parts.append(f"<h2>{esc(loc)}</h2>")
+        p = ['<section class="loc">', '<div class="loc-head">', f"<h2>{esc(loc)}</h2>"]
         if loc in errors:
-            parts.append('<span class="loc-count">Abruf fehlgeschlagen – letzter Stand</span>')
+            p.append('<span class="loc-count">Abruf fehlgeschlagen – letzter Stand</span>')
         else:
             sl = "Slot" if n_slots == 1 else "Slots"
             tg = "Tag" if n_days == 1 else "Tage"
-            parts.append(f'<span class="loc-count">{n_slots} {sl} · {n_days} {tg}</span>')
-        parts.append("</div>")
+            p.append(f'<span class="loc-count">{n_slots} {sl} · {n_days} {tg}</span>')
+        p.append("</div>")
         if not cur:
-            parts.append('<p class="empty">Keine freien Fr/Sa-Termine.</p>')
-            parts.append("</section>")
-            continue
-        parts.append('<div class="days">')
+            p.append('<p class="empty">Keine freien Fr/Sa-Termine.</p>')
+            p.append("</section>")
+            return "\n".join(p)
+        p.append('<div class="days">')
         for tag in sorted(cur):
             slots = cur[tag]
             oldslots = set(oldloc.get(tag, []))
@@ -215,32 +234,50 @@ def render(current, prev, first_run, errors, now):
             new_here = [s for s in slots if (not first_run) and s not in oldslots]
             has_new = bool(new_here)
             d = datetime.date.fromisoformat(tag)
-            parts.append(f'<div class="day{" has-new" if has_new else ""}">')
-            parts.append('<div class="day-top">')
-            parts.append(f'<div><div class="wday">{WTL[d.weekday()]}</div>'
-                         f'<div class="date">{d.strftime("%d.%m.%Y")}</div></div>')
+            p.append(f'<div class="day{" has-new" if has_new else ""}">')
+            p.append('<div class="day-top">')
+            p.append(f'<div><div class="wday">{WTL[d.weekday()]}</div>'
+                     f'<div class="date">{d.strftime("%d.%m.%Y")}</div></div>')
             if new_day:
-                badge = '<span class="nslots new">neuer Tag</span>'
+                p.append('<span class="nslots new">neuer Tag</span>')
             elif has_new:
-                badge = f'<span class="nslots new">+{len(new_here)} neu</span>'
+                p.append(f'<span class="nslots new">+{len(new_here)} neu</span>')
             else:
-                badge = f'<span class="nslots">{len(slots)} frei</span>'
-            parts.append(badge)
-            parts.append("</div>")
-            parts.append('<div class="slots">')
+                p.append(f'<span class="nslots">{len(slots)} frei</span>')
+            p.append("</div>")
+            p.append('<div class="slots">')
             for s in slots:
                 is_new = (not first_run) and s not in oldslots
-                if is_new:
-                    cls = "slot new"
-                elif len(slots) == 1:
-                    cls = "slot single"
-                else:
-                    cls = "slot"
-                parts.append(f'<span class="{cls}">{esc(s)}</span>')
-            parts.append("</div>")
-            parts.append("</div>")
-        parts.append("</div>")
-        parts.append("</section>")
+                p.append(f'<span class="{"slot new" if is_new else "slot"}">{esc(s)}</span>')
+            p.append("</div>")
+            p.append("</div>")
+        p.append("</div>")
+        p.append("</section>")
+        return "\n".join(p)
+
+    def group_new(group):
+        return sum(1 for loc in group for tag in current.get(loc, {})
+                   for s in current[loc][tag]
+                   if (not first_run) and s not in set(prev.get(loc, {}).get(tag, [])))
+
+    def tab_badge(n):
+        return f' <span class="tabnew">{n} neu</span>' if n else ""
+
+    parts.append('<div class="tabs">')
+    parts.append('<input type="radio" name="tab" id="tab-1" class="tabin" checked>')
+    parts.append(f'<label for="tab-1" class="tablbl">Hauptorte{tab_badge(group_new(PRIMARY))}</label>')
+    parts.append('<input type="radio" name="tab" id="tab-2" class="tabin">')
+    parts.append(f'<label for="tab-2" class="tablbl">Weitere Orte{tab_badge(group_new(SECONDARY))}</label>')
+    parts.append('<div class="tabline"></div>')
+    parts.append('<div class="panel panel-1">')
+    for loc in PRIMARY:
+        parts.append(section_html(loc))
+    parts.append("</div>")
+    parts.append('<div class="panel panel-2">')
+    for loc in SECONDARY:
+        parts.append(section_html(loc))
+    parts.append("</div>")
+    parts.append("</div>")
 
     foot = ("Automatischer Monitor – nur lesender Abruf, keine Reservierung. "
             "Neu hinzugekommene Slots erscheinen grün mit „NEU\"-Markierung, ein ganz "
