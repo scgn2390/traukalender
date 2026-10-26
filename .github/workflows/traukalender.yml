@@ -2,7 +2,7 @@ name: Traukalender-Monitor
 
 on:
   schedule:
-    - cron: "0,15,30,45 * * * *"   # alle 15 Min (:00/:15/:30/:45; Minute in jeder Zeitzone gleich)
+    - cron: "7,22,37,52 * * * *"   # alle 15 Min, versetzt von den ueberlasteten :00/:15/:30/:45
   workflow_dispatch: {}
 
 permissions:
