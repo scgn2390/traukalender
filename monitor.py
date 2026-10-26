@@ -23,16 +23,19 @@ try:
 except Exception:
     TZ = None  # Fallback: lokale/UTC-Zeit des Runners
 
-PRIMARY = {"Standesamt": 1533, "Standesamt 2": 2906, "Schloss Eller": 1782}
-SECONDARY = {
-    "Rathaus Benrath": 1576,
-    "Rathaus Eller": 1621,
-    "Schloss Benrath": 1742,
-    "Rathaus Ältestenratssaal": 1862,
-    "„Ja in Kürze“ im Standesamt": 39984,
+# Haupt-Trauorte (fester erster Reiter) — per Name. Alle übrigen, die die
+# Startseite liefert, landen automatisch im zweiten Reiter "Weitere Orte".
+PRIMARY_NAMES = ["Standesamt", "Standesamt 2", "Schloss Eller"]
+# Fallback, falls die Startseite mal nicht lesbar ist:
+FALLBACK_TRAUORTE = {
+    "Standesamt": 1533, "Standesamt 2": 2906, "Schloss Eller": 1782,
+    "Rathaus Benrath": 1576, "Rathaus Eller": 1621, "Schloss Benrath": 1742,
+    "Rathaus Ältestenratssaal": 1862, "„Ja in Kürze“ im Standesamt": 39984,
     "TEEKANNE-Belvedere im Kunstpalast": 45283,
 }
-TRAUORTE = {**PRIMARY, **SECONDARY}
+# Werden in main() aus der Startseite befüllt:
+PRIMARY, SECONDARY, TRAUORTE = {}, {}, {}
+START_URL = "https://traukalender.duesseldorf.de/de/Traukalender-Landeshauptstadt-Duesseldorf-72.html"
 WIN_START = datetime.date(2027, 4, 15)
 WIN_END   = datetime.date(2027, 4, 30)
 WEEKDAYS  = {4, 5}
@@ -59,6 +62,25 @@ def _curl(url):
          "-H", "Accept: */*", url],
         capture_output=True, text=True, timeout=40)
     return out.stdout
+
+
+def fetch_trauorte():
+    """Liest die buchbaren Trauorte (Name -> ID) von der Startseite.
+    Nur Orte MIT Reservierungslink werden erfasst; geschlossene (ohne Link)
+    fehlen automatisch und erscheinen, sobald die Stadt sie reaktiviert.
+    Gibt None zurück, wenn die Seite nicht lesbar ist (dann greift der Fallback).
+    """
+    try:
+        page = _curl(START_URL)
+        out = {}
+        for mm in re.finditer(r"<h2[^>]*>(.*?)</h2>(.*?)(?=<h2|\Z)", page, re.S):
+            name = html.unescape(re.sub("<[^>]+>", "", mm.group(1))).strip()
+            tid = re.search(r"Start-168\.html\?trauort=(\d+)", mm.group(2))
+            if name and tid:
+                out[name] = int(tid.group(1))
+        return out or None
+    except Exception:
+        return None
 
 
 def fetch_days(tid):
@@ -294,6 +316,12 @@ def render(current, prev, first_run, errors, now):
 
 
 def main():
+    global PRIMARY, SECONDARY, TRAUORTE
+    allt = fetch_trauorte() or dict(FALLBACK_TRAUORTE)
+    PRIMARY = {n: allt[n] for n in PRIMARY_NAMES if n in allt}
+    SECONDARY = {n: i for n, i in allt.items() if n not in PRIMARY}
+    TRAUORTE = {**PRIMARY, **SECONDARY}
+
     prev = load_prev()
     first_run = prev is None
     prev = prev or {}
