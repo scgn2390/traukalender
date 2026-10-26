@@ -2,13 +2,13 @@ name: Traukalender-Monitor
 
 on:
   schedule:
-    # Stündlich zur Minute :01 (GitHub-Cron läuft in UTC; die Minute ist in jeder
-    # Zeitzone gleich). GitHub kann geplante Läufe um einige Minuten verzögern.
-    - cron: "1 * * * *"
-  workflow_dispatch: {}   # erlaubt manuelles Auslösen über den Actions-Tab
+    - cron: "1 * * * *"       # stündlich :01 (UTC; Minute in jeder Zeitzone gleich)
+  workflow_dispatch: {}
 
 permissions:
-  contents: write          # um state.json nach jedem Lauf zurückzucommitten
+  contents: write              # state.json zurückcommitten
+  pages: write                 # GitHub Pages deployen
+  id-token: write              # für deploy-pages
 
 concurrency:
   group: traukalender-monitor
@@ -17,30 +17,53 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Run monitor
-        env:
-          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
-          # Optional: nur pushen, wenn sich etwas geändert hat -> auf "1" setzen.
-          # ONLY_ON_CHANGE: "1"
+      - name: Monitor ausführen (rendert public/index.html, schreibt state.json + status.json)
         run: python monitor.py
 
-      - name: Persist state
+      - name: Vorzustand sichern (nur bei echter Änderung)
         run: |
           if [ -n "$(git status --porcelain state.json)" ]; then
             git config user.name "traukalender-bot"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add state.json
-            git commit -m "update state $(date -u +%FT%TZ)"
+            git commit -m "state update $(date -u +%FT%TZ)"
             git push
           else
-            echo "Kein State-Update."
+            echo "Keine Verfügbarkeits-Änderung."
+          fi
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+      - name: Push nur bei neuen Slots oder Totalausfall
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          PAGE_URL: ${{ steps.deploy.outputs.page_url }}
+        run: |
+          HEADLINE=$(python3 -c "import json;print(json.load(open('status.json')).get('headline',''))")
+          if [ -n "$HEADLINE" ] && [ -n "$NTFY_TOPIC" ]; then
+            curl -s -m 20 \
+              -H "Title: Traukalender" \
+              -H "Priority: high" \
+              -H "Tags: bell" \
+              -H "Click: ${PAGE_URL}" \
+              --data-binary "${HEADLINE} -> Uebersicht: ${PAGE_URL}" \
+              "https://ntfy.sh/${NTFY_TOPIC}"
+            echo "Push gesendet."
+          else
+            echo "Kein Push noetig (keine neuen Slots)."
           fi
