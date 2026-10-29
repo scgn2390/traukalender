@@ -14,6 +14,7 @@
    "09:00 – 09:30",
    "09:30 – 10:00",
    "10:30 – 11:00",
+   "12:30 – 13:00",
    "13:00 – 13:30"
   ],
   "2027-04-24": [
@@ -65,7 +66,11 @@
    "12:00 – 12:30"
   ]
  },
- "Schloss Benrath": {},
+ "Schloss Benrath": {
+  "2027-04-23": [
+   "11:00 – 12:00"
+  ]
+ },
  "Rathaus Ältestenratssaal": {},
  "„Ja in Kürze“ im Standesamt": {},
  "TEEKANNE-Belvedere im Kunstpalast": {}
